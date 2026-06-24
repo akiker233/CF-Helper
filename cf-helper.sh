@@ -57,12 +57,14 @@ cf_api() {
   [[ -n "$body" ]] && args+=(-d "$body")
 
   local response http_code
-  response=$(curl "${args[@]}")
+  response=$(curl "${args[@]}") || { log_err "curl 请求失败"; return 1; }
   http_code=$(tail -n1 <<< "$response")
   response=$(head -n -1 <<< "$response")
 
   if [[ "$http_code" -lt 200 || "$http_code" -ge 300 ]]; then
-    log_err "HTTP $http_code：$(jq -r '.errors[0].message // "未知错误"' <<< "$response")"
+    local err_msg
+    err_msg=$(jq -r '.errors[0].message // "未知错误"' <<< "$response" 2>/dev/null) || err_msg="无效响应体"
+    log_err "HTTP $http_code：${err_msg}"
     return 1
   fi
   echo "$response"

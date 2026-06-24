@@ -76,9 +76,11 @@ cf_api() {
 # 返回: 失败时打印错误信息并返回 1
 cf_check_success() {
   local json="$1"
-  if [[ "$(jq -r '.success' <<< "$json")" != "true" ]]; then
+  local success
+  success=$(jq -r '.success' <<< "$json" 2>/dev/null) || { log_err "API 响应解析失败"; return 1; }
+  if [[ "$success" != "true" ]]; then
     local msg
-    msg=$(jq -r '.errors[0].message // "未知错误"' <<< "$json")
+    msg=$(jq -r '.errors[0].message // "未知错误"' <<< "$json" 2>/dev/null) || msg="未知错误"
     log_err "API 返回失败：$msg"
     return 1
   fi

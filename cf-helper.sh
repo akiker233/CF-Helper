@@ -42,3 +42,41 @@ check_token() {
     exit 1
   fi
 }
+
+# CF API 调用函数
+# 参数: method path [json_body]
+# 返回: 原始 JSON 响应到 stdout，HTTP 错误时 stderr 报错并返回 1
+cf_api() {
+  local method="$1"
+  local path="$2"
+  local body="${3:-}"
+  local args=(-s -w "\n%{http_code}" -X "$method"
+    -H "Authorization: Bearer ${CF_API_TOKEN}"
+    -H "Content-Type: application/json"
+    "${CF_API_BASE}${path}")
+  [[ -n "$body" ]] && args+=(-d "$body")
+
+  local response http_code
+  response=$(curl "${args[@]}")
+  http_code=$(tail -n1 <<< "$response")
+  response=$(head -n -1 <<< "$response")
+
+  if [[ "$http_code" -lt 200 || "$http_code" -ge 300 ]]; then
+    log_err "HTTP $http_code：$(jq -r '.errors[0].message // "未知错误"' <<< "$response")"
+    return 1
+  fi
+  echo "$response"
+}
+
+# 检查 CF API 响应的 success 字段
+# 参数: json
+# 返回: 失败时打印错误信息并返回 1
+cf_check_success() {
+  local json="$1"
+  if [[ "$(jq -r '.success' <<< "$json")" != "true" ]]; then
+    local msg
+    msg=$(jq -r '.errors[0].message // "未知错误"' <<< "$json")
+    log_err "API 返回失败：$msg"
+    return 1
+  fi
+}

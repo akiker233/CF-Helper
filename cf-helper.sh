@@ -66,6 +66,7 @@ cf_api() {
     return 1
   fi
   echo "$response"
+  return 0
 }
 
 # 检查 CF API 响应的 success 字段
@@ -79,4 +80,5 @@ cf_check_success() {
     log_err "API 返回失败：$msg"
     return 1
   fi
+  return 0
 }

@@ -201,3 +201,108 @@ do_action() {
     run_one "$target" "$zid"
   fi
 }
+
+# 交互菜单函数
+# 参数: zones_json（域名列表的 JSON 数组）
+# 功能: 显示域名列表和操作菜单，让用户交互选择
+interactive_menu() {
+  local zones_json="$1"
+  local zone_names=()
+  while IFS= read -r name; do
+    zone_names+=("$name")
+  done < <(jq -r '.[].name' <<< "$zones_json")
+
+  echo ""
+  echo "=== 域名列表 ==="
+  echo "  [0] 所有域名"
+  local i=1
+  for name in "${zone_names[@]}"; do
+    printf "  [%d] %s\n" "$i" "$name"
+    ((i++))
+  done
+  echo ""
+  read -rp "选择域名（输入编号）: " choice
+
+  local target
+  if [[ "$choice" == "0" ]]; then
+    target="all"
+  elif [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#zone_names[@]} )); then
+    target="${zone_names[$((choice-1))]}"
+  else
+    log_err "无效选择：$choice"
+    exit 1
+  fi
+
+  echo ""
+  echo "=== 选择操作 ==="
+  echo "  [1] 开启 Under Attack 模式"
+  echo "  [2] 关闭 Under Attack 模式（还原为 high）"
+  echo "  [3] 开启开发模式（Development Mode）"
+  echo "  [4] 关闭开发模式"
+  echo ""
+  read -rp "选择操作（输入编号）: " op_choice
+
+  local action
+  case "$op_choice" in
+    1) action="attack-on"  ;;
+    2) action="attack-off" ;;
+    3) action="dev-on"     ;;
+    4) action="dev-off"    ;;
+    *) log_err "无效操作：$op_choice"; exit 1 ;;
+  esac
+
+  echo ""
+  do_action "$target" "$action" "$zones_json"
+}
+
+# 打印使用说明
+usage() {
+  cat <<EOF
+用法：
+  $(basename "$0")                              # 交互菜单
+  $(basename "$0") <zone_name|all> <action>     # 直接执行
+
+action 可选值：
+  attack-on   开启 Under Attack 模式
+  attack-off  关闭 Under Attack 模式（还原为 high）
+  dev-on      开启开发模式
+  dev-off     关闭开发模式
+
+示例：
+  $(basename "$0") example.com attack-on
+  $(basename "$0") all dev-off
+
+环境变量：
+  CF_API_TOKEN  Cloudflare API Token（必填）
+EOF
+}
+
+# 脚本主入口
+# 无参数时: 交互菜单模式
+# 2 个参数时: 命令行直接执行模式
+# 其他: 打印 usage 并退出 1
+main() {
+  check_deps
+  check_token
+
+  if [[ $# -eq 0 ]]; then
+    log_info "正在获取域名列表..."
+    local zones_json
+    zones_json=$(get_zones) || exit 1
+    local count
+    count=$(jq 'length' <<< "$zones_json")
+    log_ok "共找到 ${count} 个域名"
+    interactive_menu "$zones_json"
+  elif [[ $# -eq 2 ]]; then
+    local target="$1" action="$2"
+    log_info "正在获取域名列表..."
+    local zones_json
+    zones_json=$(get_zones) || exit 1
+    do_action "$target" "$action" "$zones_json"
+  else
+    usage
+    exit 1
+  fi
+}
+
+main "$@"

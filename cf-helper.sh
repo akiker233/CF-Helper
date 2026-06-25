@@ -99,11 +99,11 @@ get_zones() {
 
     local zones total_pages
     zones=$(jq '[.result[] | {name: .name, id: .id}]' <<< "$resp")
-    total_pages=$(jq -r '.result_info.total_pages' <<< "$resp")
+    total_pages=$(jq -r '.result_info.total_pages' <<< "$resp" 2>/dev/null) || { log_err "解析翻页信息失败"; return 1; }
     all_zones=$(jq -s '.[0] + .[1]' <(echo "$all_zones") <(echo "$zones"))
 
     [[ "$page" -ge "$total_pages" ]] && break
-    ((page++))
+    page=$((page + 1))
   done
   echo "$all_zones"
 }
@@ -176,10 +176,10 @@ do_action() {
   run_one() {
     local zname="$1" zid="$2"
     case "$action" in
-      attack-on)  set_security_level "$zid" "$zname" "under_attack" && ((success++)) || ((fail++)) ;;
-      attack-off) set_security_level "$zid" "$zname" "high"         && ((success++)) || ((fail++)) ;;
-      dev-on)     set_dev_mode       "$zid" "$zname" "on"           && ((success++)) || ((fail++)) ;;
-      dev-off)    set_dev_mode       "$zid" "$zname" "off"          && ((success++)) || ((fail++)) ;;
+      attack-on)  set_security_level "$zid" "$zname" "under_attack" && success=$((success + 1)) || fail=$((fail + 1)) ;;
+      attack-off) set_security_level "$zid" "$zname" "high"         && success=$((success + 1)) || fail=$((fail + 1)) ;;
+      dev-on)     set_dev_mode       "$zid" "$zname" "on"           && success=$((success + 1)) || fail=$((fail + 1)) ;;
+      dev-off)    set_dev_mode       "$zid" "$zname" "off"          && success=$((success + 1)) || fail=$((fail + 1)) ;;
     esac
   }
 
@@ -218,7 +218,7 @@ interactive_menu() {
   local i=1
   for name in "${zone_names[@]}"; do
     printf "  [%d] %s\n" "$i" "$name"
-    ((i++))
+    ((i++)) || true
   done
   echo ""
   read -rp "选择域名（输入编号）: " choice || exit 1

@@ -86,3 +86,72 @@ cf_check_success() {
   fi
   return 0
 }
+
+# 获取所有域名列表，支持自动翻页
+# 参数: 无
+# 返回: 输出 JSON 数组 [{"name":"...","id":"..."},...]，失败返回 1
+get_zones() {
+  local page=1 all_zones='[]'
+  while true; do
+    local resp
+    resp=$(cf_api GET "/zones?per_page=50&page=${page}") || return 1
+    cf_check_success "$resp" || return 1
+
+    local zones total_pages
+    zones=$(jq '[.result[] | {name: .name, id: .id}]' <<< "$resp")
+    total_pages=$(jq -r '.result_info.total_pages' <<< "$resp")
+    all_zones=$(jq -s '.[0] + .[1]' <(echo "$all_zones") <(echo "$zones"))
+
+    [[ "$page" -ge "$total_pages" ]] && break
+    ((page++))
+  done
+  echo "$all_zones"
+}
+
+# 根据域名从 zones JSON 中查询 zone_id
+# 参数: zone_name zones_json
+# 返回: 输出 zone_id，未找到返回 1
+get_zone_id() {
+  local zone_name="$1" zones="$2"
+  local zone_id
+  zone_id=$(jq -r --arg name "$zone_name" '.[] | select(.name == $name) | .id' <<< "$zones")
+  if [[ -z "$zone_id" ]]; then
+    log_err "未找到域名：$zone_name"
+    return 1
+  fi
+  echo "$zone_id"
+}
+
+# 设置域名的安全级别
+# 参数: zone_id zone_name under_attack|high
+# 返回: 成功输出结果，失败返回 1
+set_security_level() {
+  local zone_id="$1" zone_name="$2" value="$3"
+  local label
+  [[ "$value" == "under_attack" ]] && label="Under Attack 模式" || label="高防护模式(high)"
+  log_info "正在对 ${zone_name} 设置安全级别 → ${label}..."
+  local resp
+  resp=$(cf_api PATCH "/zones/${zone_id}/settings/security_level" \
+    "{\"value\":\"${value}\"}") || return 1
+  cf_check_success "$resp" || return 1
+  local current
+  current=$(jq -r '.result.value' <<< "$resp")
+  log_ok "${zone_name} 安全级别已设为：${current}"
+}
+
+# 设置域名的开发模式
+# 参数: zone_id zone_name on|off
+# 返回: 成功输出结果，失败返回 1
+set_dev_mode() {
+  local zone_id="$1" zone_name="$2" value="$3"
+  local label
+  [[ "$value" == "on" ]] && label="开启" || label="关闭"
+  log_info "正在对 ${zone_name} ${label}开发模式..."
+  local resp
+  resp=$(cf_api PATCH "/zones/${zone_id}/settings/development_mode" \
+    "{\"value\":\"${value}\"}") || return 1
+  cf_check_success "$resp" || return 1
+  local current
+  current=$(jq -r '.result.value' <<< "$resp")
+  log_ok "${zone_name} 开发模式当前状态：${current}"
+}

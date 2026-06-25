@@ -35,10 +35,18 @@ check_deps() {
 }
 
 # 凭证检查函数
+# 支持两种认证方式：
+#   1. API Token：export CF_API_TOKEN="..."
+#   2. Global API Key：export CF_API_EMAIL="..." CF_API_KEY="..."
 check_token() {
-  if [[ -z "${CF_API_TOKEN:-}" ]]; then
-    log_err "未找到 CF_API_TOKEN，请先执行："
-    log_err "  export CF_API_TOKEN=\"your_api_token\""
+  if [[ -n "${CF_API_TOKEN:-}" ]]; then
+    return 0
+  elif [[ -n "${CF_API_EMAIL:-}" && -n "${CF_API_KEY:-}" ]]; then
+    return 0
+  else
+    log_err "未找到 Cloudflare 凭证，请选择以下任一方式："
+    log_err "  方式一（API Token）：export CF_API_TOKEN=\"your_api_token\""
+    log_err "  方式二（Global API Key）：export CF_API_EMAIL=\"your@email.com\" CF_API_KEY=\"your_global_key\""
     exit 1
   fi
 }
@@ -50,8 +58,16 @@ cf_api() {
   local method="$1"
   local path="$2"
   local body="${3:-}"
+  # 根据凭证类型选择认证 header
+  local auth_headers=()
+  if [[ -n "${CF_API_TOKEN:-}" ]]; then
+    auth_headers+=(-H "Authorization: Bearer ${CF_API_TOKEN}")
+  else
+    auth_headers+=(-H "X-Auth-Email: ${CF_API_EMAIL}" -H "X-Auth-Key: ${CF_API_KEY}")
+  fi
+
   local args=(-s -w "\n%{http_code}" -X "$method"
-    -H "Authorization: Bearer ${CF_API_TOKEN}"
+    "${auth_headers[@]}"
     -H "Content-Type: application/json"
     "${CF_API_BASE}${path}")
   [[ -n "$body" ]] && args+=(-d "$body")
@@ -272,8 +288,9 @@ action 可选值：
   $(basename "$0") example.com attack-on
   $(basename "$0") all dev-off
 
-环境变量：
-  CF_API_TOKEN  Cloudflare API Token（必填）
+环境变量（二选一）：
+  CF_API_TOKEN                     Cloudflare API Token
+  CF_API_EMAIL + CF_API_KEY        Global API Key 方式
 EOF
 }
 

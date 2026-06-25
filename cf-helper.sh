@@ -221,7 +221,7 @@ interactive_menu() {
     ((i++))
   done
   echo ""
-  read -rp "选择域名（输入编号）: " choice
+  read -rp "选择域名（输入编号）: " choice || exit 1
 
   local target
   if [[ "$choice" == "0" ]]; then
@@ -240,7 +240,7 @@ interactive_menu() {
   echo "  [3] 开启开发模式（Development Mode）"
   echo "  [4] 关闭开发模式"
   echo ""
-  read -rp "选择操作（输入编号）: " op_choice
+  read -rp "选择操作（输入编号）: " op_choice || exit 1
 
   local action
   case "$op_choice" in

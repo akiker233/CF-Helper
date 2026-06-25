@@ -81,6 +81,11 @@ cf_api() {
     local err_msg
     err_msg=$(jq -r '.errors[0].message // "未知错误"' <<< "$response" 2>/dev/null) || err_msg="无效响应体"
     log_err "HTTP $http_code：${err_msg}"
+    if [[ "$http_code" -eq 403 ]]; then
+      log_err "  → 权限不足。如使用 API Token，请确认已授予以下权限："
+      log_err "      Zone > Zone Settings > Edit"
+      log_err "      Zone > Zone > Read"
+    fi
     return 1
   fi
   echo "$response"

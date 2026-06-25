@@ -155,3 +155,49 @@ set_dev_mode() {
   current=$(jq -r '.result.value' <<< "$resp")
   log_ok "${zone_name} 开发模式当前状态：${current}"
 }
+
+# 批量操作辅助函数
+# 参数: target(zone_name|all) action(attack-on|attack-off|dev-on|dev-off) zones_json
+# 返回: 单域名失败返回 1；all 时统计结果，有失败返回 1
+do_action() {
+  local target="$1" action="$2" zones_json="$3"
+  local success=0 fail=0
+
+  # 验证 action 参数
+  case "$action" in
+    attack-on|attack-off|dev-on|dev-off) ;;
+    *)
+      log_err "未知操作：$action"
+      return 1
+      ;;
+  esac
+
+  # 执行单个域名的操作
+  run_one() {
+    local zname="$1" zid="$2"
+    case "$action" in
+      attack-on)  set_security_level "$zid" "$zname" "under_attack" && ((success++)) || ((fail++)) ;;
+      attack-off) set_security_level "$zid" "$zname" "high"         && ((success++)) || ((fail++)) ;;
+      dev-on)     set_dev_mode       "$zid" "$zname" "on"           && ((success++)) || ((fail++)) ;;
+      dev-off)    set_dev_mode       "$zid" "$zname" "off"          && ((success++)) || ((fail++)) ;;
+    esac
+  }
+
+  if [[ "$target" == "all" ]]; then
+    # 批量操作模式：逐个执行，某个失败不中断
+    while IFS= read -r zone; do
+      local zname zid
+      zname=$(jq -r '.name' <<< "$zone")
+      zid=$(jq -r '.id'   <<< "$zone")
+      run_one "$zname" "$zid"
+    done < <(jq -c '.[]' <<< "$zones_json")
+    echo ""
+    log_info "批量完成：成功 ${success} 个，失败 ${fail} 个"
+    [[ $fail -eq 0 ]] || return 1
+  else
+    # 单域名模式：直接执行，失败返回 1
+    local zid
+    zid=$(get_zone_id "$target" "$zones_json") || return 1
+    run_one "$target" "$zid"
+  fi
+}
